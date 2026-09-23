@@ -39,6 +39,10 @@ Os 6 contentores devem apresentar o estado `Up` ou `running`:
 * `financeiro-worker` (Background Service)
 
 ---
+## Docker Desktop
+
+<img width="1600" height="861" alt="image" src="https://github.com/user-attachments/assets/d93a0fc4-405b-4b67-902d-4ed0974e9637" />
+
 
 ## 🔍 Monitorização de Registos (Logs)
 
