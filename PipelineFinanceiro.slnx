@@ -1,5 +1,15 @@
 <Solution>
-  <Project Path="src/Financeiro.Domain/Financeiro.Domain.csproj" />
-  <Project Path="src/Financeiro.Worker/Financeiro.Worker.csproj" />
-  <Project Path="src/Financeiro/Financeiro.csproj" />
+  <Folder Name="/01 - Applications/">
+    <Project Path="src/Financeiro.Worker/Financeiro.Worker.csproj" />
+    <Project Path="src/Financeiro/Financeiro.csproj" />
+  </Folder>
+  <Folder Name="/02 - Core/">
+    <Project Path="src/Financeiro.Domain/Financeiro.Domain.csproj" />
+  </Folder>
+  <Folder Name="/03 - Cross-cutting/">
+    <Project Path="src/SQL_Objects/SQL_Objects.sqlproj" Id="57803851-ede4-4e1c-8c05-b9f3f6973d2e">
+      <Build />
+      <Deploy />
+    </Project>
+  </Folder>
 </Solution>

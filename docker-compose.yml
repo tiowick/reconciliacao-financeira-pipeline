@@ -1,0 +1,122 @@
+version: '3.8'
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: mssql-server
+    user: root
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Senha@@123"
+      MSSQL_PID: "Developer"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Senha@@123' -C -Q 'SELECT 1' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    volumes:
+      - sqlserver_data:/var/opt/mssql/data
+    networks:
+      - pipeline-net
+
+  servicebus-emulator:
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    container_name: sb-emulator
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    ports:
+      - "5672:5672"
+      - "5300:5300"
+    environment:
+      SQL_SERVER: sqlserver
+      MSSQL_SA_PASSWORD: "Senha@@123"
+      ACCEPT_EULA: "Y"
+    volumes:
+      - type: bind
+        source: ./Config/ServiceBusEmulatorConfig.json
+        target: /ServiceBus_Emulator/ConfigFiles/Config.json
+    networks:
+      - pipeline-net
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: azurite
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    volumes:
+      - azurite_data:/data
+    networks:
+      - pipeline-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis-cache
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --save "" --appendonly no
+    volumes:
+      - redis_data:/data
+    networks:
+      - pipeline-net
+
+  financeiro-api:
+    build:
+      context: .
+      dockerfile: src/Financeiro/Dockerfile
+    container_name: financeiro-api
+    ports:
+      - "5261:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__SqlDatabase=Server=sqlserver,1433;Database=ReconciliacaoDb;User Id=sa;Password=Senha@@123;TrustServerCertificate=True;MultipleActiveResultSets=True;
+      - ConnectionStrings__AzureServiceBus=Endpoint=sb://servicebus-emulator:5672;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;
+      - ConnectionStrings__AzureBlobStorage=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+      - ConnectionStrings__Redis=redis:6379
+      - ServiceBusSettings__ImportacaoQueue=importacao-lotes-queue
+      - ServiceBusSettings__NotificacaoQueue=reconciliacao-notificacao-queue
+      - BlobStorageSettings__ContainerName=arquivos-importacao
+    depends_on:
+      - sqlserver
+      - redis
+      - azurite
+      - servicebus-emulator
+    networks:
+      - pipeline-net
+
+  financeiro-worker:
+    build:
+      context: .
+      dockerfile: src/Financeiro.Worker/Dockerfile
+    container_name: financeiro-worker
+    environment:
+      - DOTNET_ENVIRONMENT=Development
+      - ConnectionStrings__SqlDatabase=Server=sqlserver,1433;Database=ReconciliacaoDb;User Id=sa;Password=Senha@@123;TrustServerCertificate=True;MultipleActiveResultSets=True;
+      - ConnectionStrings__AzureServiceBus=Endpoint=sb://servicebus-emulator:5672;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;
+      - ConnectionStrings__AzureBlobStorage=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+      - ConnectionStrings__Redis=redis:6379
+      - ServiceBusSettings__ImportacaoQueue=importacao-lotes-queue
+      - ServiceBusSettings__NotificacaoQueue=reconciliacao-notificacao-queue
+      - BlobStorageSettings__ContainerName=arquivos-importacao
+    depends_on:
+      - sqlserver
+      - redis
+      - azurite
+      - servicebus-emulator
+    networks:
+      - pipeline-net
+
+volumes:
+  sqlserver_data:
+  redis_data:
+  azurite_data:
+
+networks:
+  pipeline-net:
+    driver: bridge
