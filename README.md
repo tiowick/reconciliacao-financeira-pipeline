@@ -179,6 +179,8 @@ docker compose down -v
 
 <img width="979" height="580" alt="image" src="https://github.com/user-attachments/assets/5517c6c4-8db6-411d-bba9-4c8befcbe518" />
 
+##
+
 ```bash
 {
     "protocoloId": "9c3077b7-fc1a-491b-a748-f8f9a82b69e2",
@@ -266,3 +268,17 @@ FROM dbo.LogsAuditoria
 ORDER BY Id DESC;
 
 ```
+##
+
+## Em sistemas distribuídos e de missão crítica, falhas vão acontecer, o diferencial é como a arquitetura reage a elas.
+
+### No pipeline de conciliação financeira em .NET Core: A falha de persistência é interceptada pelo Polly v8.   
+#### O pipeline executa 3 retentativas com backoff exponencial e jitter para absorver instabilidades transitórias.
+#### Ao esgotar o limite, a mensagem é encaminhada de forma segura para a Dead Letter Queue (DLQ) do Azure Service Bus, liberando a fila e evitando perda de dados ou paradas no container.
+
+<img width="1049" height="348" alt="image" src="https://github.com/user-attachments/assets/e91328eb-2c78-4638-ac4f-5808f46ce410" />
+
+
+
+
+
