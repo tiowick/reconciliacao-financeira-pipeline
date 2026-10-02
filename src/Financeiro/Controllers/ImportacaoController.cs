@@ -238,6 +238,99 @@ namespace Financeiro.Controllers
             return Ok(new { mensagem = "Reprocessamento concluído com sucesso." });
         }
 
+        [HttpPost("reprocessar-dlq")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<IActionResult> ReprocessarDlq([FromQuery] int limiteMensagens = 10, CancellationToken cancellationToken = default)
+        {
+            var queueName = _configuration["ServiceBusSettings:ImportacaoQueue"] ?? "importacao-lotes-queue";
+
+            // Conecta na subfila Dead Letter Queue do Azure Service Bus
+            var dlqReceiver = _serviceBusClient.CreateReceiver(queueName, new ServiceBusReceiverOptions
+            {
+                SubQueue = SubQueue.DeadLetter,
+                ReceiveMode = ServiceBusReceiveMode.PeekLock
+            });
+
+            var sender = _serviceBusClient.CreateSender(queueName);
+            int totalResgatadas = 0;
+
+            try
+            {
+                var mensagensDlq = await dlqReceiver.ReceiveMessagesAsync(
+                    maxMessages: limiteMensagens,
+                    maxWaitTime: TimeSpan.FromSeconds(3),
+                    cancellationToken: cancellationToken);
+
+                foreach (var msg in mensagensDlq)
+                {
+                    // Clona o payload preservando o corpo da mensagem
+                    var mensagemReenviada = new ServiceBusMessage(msg.Body)
+                    {
+                        ContentType = msg.ContentType,
+                        Subject = msg.Subject,
+                        MessageId = $"{msg.MessageId}_retry_{DateTime.UtcNow.Ticks}"
+                    };
+
+                    // Copia os metadados e headers originais
+                    foreach (var prop in msg.ApplicationProperties)
+                    {
+                        mensagemReenviada.ApplicationProperties.Add(prop.Key, prop.Value);
+                    }
+
+                    // Posta novamente na fila principal
+                    await sender.SendMessageAsync(mensagemReenviada, cancellationToken);
+
+                    // Confirma o dreno e remoção da DLQ
+                    await dlqReceiver.CompleteMessageAsync(msg, cancellationToken);
+                    totalResgatadas++;
+                }
+
+                return Ok(new
+                {
+                    mensagensResgatadas = totalResgatadas,
+                    status = $"{totalResgatadas} lote(s) reenviado(s) da DLQ para a fila principal com sucesso."
+                });
+            }
+            finally
+            {
+                await dlqReceiver.DisposeAsync();
+                await sender.DisposeAsync();
+            }
+        }
+
+        [HttpGet("inspecionar-dlq")]
+        public async Task<IActionResult> InspecionarDlq([FromQuery] int quantidade = 5)
+        {
+            var queueName = _configuration["ServiceBusSettings:ImportacaoQueue"] ?? "importacao-lotes-queue";
+
+            var receiver = _serviceBusClient.CreateReceiver(queueName, new ServiceBusReceiverOptions
+            {
+                SubQueue = SubQueue.DeadLetter
+            });
+
+            try
+            {
+                // PeekMessages apenas lê sem travar nem remover a mensagem da fila
+                var mensagens = await receiver.PeekMessagesAsync(maxMessages: quantidade);
+
+                var resultado = mensagens.Select(m => new
+                {
+                    m.MessageId,
+                    DeadLetterReason = m.DeadLetterReason,
+                    DeadLetterErrorDescription = m.DeadLetterErrorDescription,
+                    Corpo = m.Body.ToString(),
+                    DataEntradaDlq = m.EnqueuedTime
+                });
+
+                return Ok(resultado);
+            }
+            finally
+            {
+                await receiver.DisposeAsync();
+            }
+        }
+
+
         [HttpPost("testar-worker-direto")]
         public async Task<IActionResult> TestarWorkerDireto([FromBody] MensagemLoteImportacao mensagemTeste, CancellationToken cancellationToken)
         {
