@@ -278,6 +278,14 @@ ORDER BY Id DESC;
 
 <img width="1049" height="348" alt="image" src="https://github.com/user-attachments/assets/e91328eb-2c78-4638-ac4f-5808f46ce410" />
 
+##
+
+<img width="1241" height="512" alt="image" src="https://github.com/user-attachments/assets/5eca45a3-2afa-4c25-afb0-3b178f61def4" />
+
+## Reprocessando o que tava preso no dlq
+
+<img width="1067" height="338" alt="image" src="https://github.com/user-attachments/assets/710a3bbb-390e-475f-8158-44003375d4bf" />
+
 
 
 
