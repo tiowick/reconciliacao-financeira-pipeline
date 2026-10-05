@@ -286,7 +286,44 @@ ORDER BY Id DESC;
 
 <img width="1067" height="338" alt="image" src="https://github.com/user-attachments/assets/710a3bbb-390e-475f-8158-44003375d4bf" />
 
+## Observabilidade e Monitorização
 
+A monitorização da resiliência do pipeline e do consumo assíncrono do Worker foi implementada com **OpenTelemetry**, exportando métricas canónicas no formato OpenMetrics para o **Prometheus** e centralizando a visualização em dashboards em tempo real no **Grafana**.
 
+### Métricas Exportadas pelo Worker
 
+| Métrica | Tipo | Descrição |
+| :--- | :--- | :--- |
+| `reconciliacao_lotes_sucesso_total` | Counter | Total de lotes processados e conciliados na base de dados com êxito. |
+| `reconciliacao_retentativas_total` | Counter | Total de retentativas executadas pelas políticas de resiliência do Polly. |
+| `reconciliacao_mensagens_dlq_total` | Counter | Total de mensagens irrecuperáveis descartadas para a Dead Letter Queue (DLQ). |
+
+---
+
+### Testes de Resiliência e Dead Letter Queue (DLQ)
+
+Simulação de falha temporária e esgotamento da política de retry via Polly, culminando no descarte e posterior recuperação da mensagem presa na DLQ.
+
+#### Reprocessamento da Dead Letter Queue
+<img width="1067" height="338" alt="Reprocessando mensagens na DLQ" src="https://github.com/user-attachments/assets/710a3bbb-390e-475f-8158-44003375d4bf" />
+
+---
+
+### Coleta e Série Temporal no Prometheus
+
+Validação das séries temporais geradas e raspadas diretamente no endpoint `/metrics` do `financeiro-worker`:
+
+#### 1. Lotes Conciliados com Sucesso (`reconciliacao_lotes_sucesso_total`)
+<img width="1600" height="796" alt="Métrica de lotes conciliados com sucesso no Prometheus" src="https://github.com/user-attachments/assets/3e1f7c57-b185-4802-b819-5cb4c97c104e" />
+
+#### 2. Mensagens Encaminhadas para a DLQ (`reconciliacao_mensagens_dlq_total`)
+<img width="1600" height="803" alt="Métrica de mensagens na DLQ no Prometheus" src="https://github.com/user-attachments/assets/188acd70-c950-481e-a1bf-fc9b287f4c35" />
+
+---
+
+### Dashboard Unificado no Grafana
+
+Visão executiva em tempo real com thresholds configurados para destacar anomalias operacionais (alertando falhas em vermelho e exibindo o volume de retentativas executadas pelo Polly):
+
+<img width="1600" height="831" alt="Dashboard operacional no Grafana" src="https://github.com/user-attachments/assets/69ed2b34-4677-43fa-810f-1fd4f4b90774" />
 
