@@ -36,7 +36,9 @@ public class Worker : BackgroundService
             {
                 ShouldHandle = new PredicateBuilder()
                     .Handle<SqlException>()
-                    .Handle<TimeoutException>(),
+                    .Handle<TimeoutException>()
+                    .Handle<System.Net.Sockets.SocketException>()
+                    .Handle<System.IO.IOException>(),
                 MaxRetryAttempts = 3,
                 Delay = TimeSpan.FromSeconds(2),
                 BackoffType = DelayBackoffType.Exponential,
@@ -46,6 +48,8 @@ public class Worker : BackgroundService
                     _logger.LogWarning("[Polly] Falha transitória detectada. Tentativa {Tentativa} de 3. Motivo: {Mensagem}",
                         args.AttemptNumber + 1,
                         args.Outcome.Exception?.Message);
+                    WorkerMetrics.RetentativasPolly.Add(1);
+
                     return ValueTask.CompletedTask;
                 }
             })
@@ -93,6 +97,9 @@ public class Worker : BackgroundService
                     args.Message,
                     "PayloadInvalido",
                     "O corpo da mensagem estava vazio ou não pôde ser desserializado.");
+
+                // Métrica: Payload inválido enviado para a DLQ
+                WorkerMetrics.MensagensDlq.Add(1);
                 return;
             }
 
@@ -118,6 +125,9 @@ public class Worker : BackgroundService
 
             await args.CompleteMessageAsync(args.Message);
             _logger.LogInformation("Lote {Lote} concluído e conciliado com sucesso.", lote.NumeroLote);
+
+            // Métrica: Incrementa contador de lotes conciliados com sucesso
+            WorkerMetrics.LotesProcessadosSucesso.Add(1);
         }
         catch (Exception ex)
         {
@@ -133,6 +143,9 @@ public class Worker : BackgroundService
                 deadLetterReason: "FalhaProcessamentoExcedida",
                 deadLetterErrorDescription: ex.Message
             );
+
+            // Métrica: Incrementa contador de falhas enviadas para a DLQ
+            WorkerMetrics.MensagensDlq.Add(1);
         }
     }
 
@@ -166,6 +179,20 @@ public class Worker : BackgroundService
             });
 
             await cmdConciliar.ExecuteNonQueryAsync();
+        }
+
+        // Registro de Auditoria no banco (Worker)
+        await using (var cmdAudit = new SqlCommand("ssp_RegistrarLogAuditoria", connection))
+        {
+            cmdAudit.CommandType = CommandType.StoredProcedure;
+            cmdAudit.Parameters.Add(new SqlParameter("@ProtocoloId", SqlDbType.UniqueIdentifier) { Value = protocoloId });
+            cmdAudit.Parameters.Add(new SqlParameter("@Nivel", SqlDbType.VarChar, 20) { Value = "INFO" });
+            cmdAudit.Parameters.Add(new SqlParameter("@Origem", SqlDbType.VarChar, 100) { Value = "Worker" });
+            cmdAudit.Parameters.Add(new SqlParameter("@Operacao", SqlDbType.VarChar, 100) { Value = "PersistirLote" });
+            cmdAudit.Parameters.Add(new SqlParameter("@Mensagem", SqlDbType.NVarChar, -1) { Value = $"Lote de {transacoes.Count} transações persistido e reconciliado com sucesso." });
+            cmdAudit.Parameters.Add(new SqlParameter("@DetalhesJson", SqlDbType.NVarChar, -1) { Value = DBNull.Value });
+
+            await cmdAudit.ExecuteNonQueryAsync();
         }
     }
 

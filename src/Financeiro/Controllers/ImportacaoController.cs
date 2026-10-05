@@ -1,4 +1,4 @@
-﻿using Azure.Messaging.ServiceBus;
+using Azure.Messaging.ServiceBus;
 using Azure.Storage.Blobs;
 using Financeiro.Domain.DTOs;
 using Financeiro.Domain.Interfaces.Services;
@@ -15,10 +15,10 @@ namespace Financeiro.Controllers
     {
         private readonly BlobServiceClient _blobServiceClient;
         private readonly ServiceBusClient _serviceBusClient;
+        private readonly ServiceBusSender _serviceBusSender;
         private readonly ICsvStreamParserService _csvParser;
         private readonly IConfiguration _configuration;
         private readonly ILogger<ImportacaoController> _logger;
-        private readonly IAuditoriaService _auditoriaService;
         private readonly string _connectionString;
 
         public ImportacaoController(
@@ -26,15 +26,16 @@ namespace Financeiro.Controllers
             ServiceBusClient serviceBusClient,
             ICsvStreamParserService csvParser,
             IConfiguration configuration,
-            ILogger<ImportacaoController> logger,
-            IAuditoriaService auditoriaService)
+            ILogger<ImportacaoController> logger)
         {
             _blobServiceClient = blobServiceClient;
             _serviceBusClient = serviceBusClient;
             _csvParser = csvParser;
             _configuration = configuration;
             _logger = logger;
-            _auditoriaService = auditoriaService;
+
+            var queueName = _configuration["ServiceBusSettings:ImportacaoQueue"] ?? "importacao-lotes-queue";
+            _serviceBusSender = _serviceBusClient.CreateSender(queueName);
 
             _connectionString = _configuration.GetConnectionString("SqlDatabase")
                 ?? throw new InvalidOperationException("A connection string 'SqlDatabase' não foi encontrada.");
@@ -57,7 +58,7 @@ namespace Financeiro.Controllers
 
             try
             {
-                // 1. Salvar o arquivo bruto no Blob Storage (Azurite)
+                // 1. Streaming e upload do arquivo diretamente para o Blob Storage (Azurite)
                 var containerName = _configuration["BlobStorageSettings:ContainerName"] ?? "arquivos-importacao";
                 var containerClient = _blobServiceClient.GetBlobContainerClient(containerName);
                 await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
@@ -70,11 +71,7 @@ namespace Financeiro.Controllers
 
                 _logger.LogInformation("Arquivo {Arquivo} salvo no Blob Storage com sucesso. Protocolo: {ProtocoloId}", arquivo.FileName, protocoloId);
 
-                // 2. Preparar sender do Azure Service Bus
-                var queueName = _configuration["ServiceBusSettings:ImportacaoQueue"] ?? "importacao-lotes-queue";
-                var sender = _serviceBusClient.CreateSender(queueName);
-
-                // 3. Ler o arquivo em lotes via streaming e despachar as mensagens
+                // 2. Leitura em lotes via streaming e publicação assíncrona no Azure Service Bus
                 await using (var parseStream = arquivo.OpenReadStream())
                 {
                     int numeroLote = 1;
@@ -99,45 +96,23 @@ namespace Financeiro.Controllers
                             Subject = "LoteTransacoesImportacao"
                         };
 
-                        await sender.SendMessageAsync(serviceBusMessage, cancellationToken);
+                        await _serviceBusSender.SendMessageAsync(serviceBusMessage, cancellationToken);
                     }
 
-                    _logger.LogInformation("Protocolo {ProtocoloId} fatiado e postado na fila {Queue} com sucesso.", protocoloId, queueName);
+                    _logger.LogInformation("Protocolo {ProtocoloId} fatiado e postado na fila do Service Bus com sucesso.", protocoloId);
                 }
 
-                // 4. Registrar auditoria estruturada via DTO
-                await _auditoriaService.RegistrarLogAsync(new LogAuditoriaDTO
-                {
-                    ProtocoloId = protocoloId,
-                    Origem = "API",
-                    Nivel = "INFO",
-                    Operacao = "UploadArquivo",
-                    Mensagem = $"Arquivo {arquivo.FileName} ingerido e enfileirado com sucesso.",
-                    DetalhesJson = JsonSerializer.Serialize(new { TamanhoBytes = arquivo.Length, NomeBlob = nomeBlob })
-                });
-
-                // 5. Retornar resposta assíncrona imediata (202 Accepted)
+                // 3. Resposta assíncrona imediata (202 Accepted) sem tocar no banco de dados SQL Server
                 return Accepted(new
                 {
-                    ProtocoloId = protocoloId,
-                    Mensagem = "Arquivo recebido com sucesso. Processamento em lote enfileirado.",
-                    NomeArquivo = arquivo.FileName,
-                    Data = DateTime.UtcNow
+                    protocoloId = protocoloId,
+                    mensagem = "Arquivo recebido com sucesso. Processamento em lote enfileirado.",
+                    nomeArquivo = arquivo.FileName,
+                    data = DateTime.UtcNow
                 });
             }
             catch (Exception ex)
             {
-                // Registra a falha na tabela de auditoria via DTO
-                await _auditoriaService.RegistrarLogAsync(new LogAuditoriaDTO
-                {
-                    ProtocoloId = protocoloId,
-                    Origem = "API",
-                    Nivel = "ERROR",
-                    Operacao = "UploadArquivo",
-                    Mensagem = $"Erro ao processar o upload: {ex.Message}",
-                    DetalhesJson = JsonSerializer.Serialize(new { ex.StackTrace })
-                });
-
                 _logger.LogError(ex, "Falha crítica durante a ingestão do arquivo {Arquivo}", arquivo.FileName);
                 return StatusCode(StatusCodes.Status500InternalServerError, new { erro = "Falha ao enfileirar o arquivo para importação." });
             }
@@ -226,14 +201,16 @@ namespace Financeiro.Controllers
             await connection.OpenAsync();
             await command.ExecuteNonQueryAsync();
 
-            await _auditoriaService.RegistrarLogAsync(new LogAuditoriaDTO
+            await using var cmdAudit = new SqlCommand("ssp_RegistrarLogAuditoria", connection)
             {
-                ProtocoloId = protocoloId,
-                Origem = "API",
-                Nivel = "INFO",
-                Operacao = "ReprocessarRejeitados",
-                Mensagem = "Reprocessamento de divergências solicitado com sucesso."
-            });
+                CommandType = CommandType.StoredProcedure
+            };
+            cmdAudit.Parameters.Add(new SqlParameter("@ProtocoloId", SqlDbType.UniqueIdentifier) { Value = protocoloId });
+            cmdAudit.Parameters.Add(new SqlParameter("@Nivel", SqlDbType.VarChar, 20) { Value = "INFO" });
+            cmdAudit.Parameters.Add(new SqlParameter("@Origem", SqlDbType.VarChar, 100) { Value = "API" });
+            cmdAudit.Parameters.Add(new SqlParameter("@Operacao", SqlDbType.VarChar, 100) { Value = "ReprocessarRejeitados" });
+            cmdAudit.Parameters.Add(new SqlParameter("@Mensagem", SqlDbType.NVarChar, -1) { Value = "Reprocessamento de divergências solicitado com sucesso." });
+            await cmdAudit.ExecuteNonQueryAsync();
 
             return Ok(new { mensagem = "Reprocessamento concluído com sucesso." });
         }

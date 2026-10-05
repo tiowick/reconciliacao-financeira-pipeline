@@ -12,6 +12,9 @@
     <PackageReference Include="Dapper" Version="2.1.86" />
     <PackageReference Include="Microsoft.Data.SqlClient" Version="7.1.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.19.1-beta.1" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.19.0" />
     <PackageReference Include="Polly.Core" Version="8.8.0" />
     <PackageReference Include="StackExchange.Redis" Version="3.3.1" />
     <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="10.0.12" />

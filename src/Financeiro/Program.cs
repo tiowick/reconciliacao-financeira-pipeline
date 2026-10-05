@@ -1,6 +1,7 @@
 using Financeiro.Domain.Interfaces.Services;
 using Financeiro.Services;
 using Microsoft.Extensions.Azure;
+using OpenTelemetry.Metrics;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,6 +33,16 @@ builder.Services.AddScoped<ICsvStreamParserService, CsvStreamParserService>();
 builder.Services.AddScoped<IAuditoriaService, AuditoriaService>();
 
 
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics =>
+    {
+        metrics
+            .AddAspNetCoreInstrumentation()
+            .AddRuntimeInstrumentation()
+            .AddPrometheusExporter();
+    });
+
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -46,5 +57,7 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.UseOpenTelemetryPrometheusScrapingEndpoint();
 
 app.Run();
