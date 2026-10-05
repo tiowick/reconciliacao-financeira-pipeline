@@ -288,7 +288,10 @@ ORDER BY Id DESC;
 
 ## Observabilidade e Monitorização
 
-A monitorização da resiliência do pipeline e do consumo assíncrono do Worker foi implementada com **OpenTelemetry**, exportando métricas canónicas no formato OpenMetrics para o **Prometheus** e centralizando a visualização em dashboards em tempo real no **Grafana**.
+<img width="1600" height="860" alt="image" src="https://github.com/user-attachments/assets/ac923a75-fcd1-46d1-a67c-f9e943bf9233" />
+
+
+### A monitorização da resiliência do pipeline e do consumo assíncrono do Worker foi implementada com **OpenTelemetry**, exportando métricas canónicas no formato OpenMetrics para o **Prometheus** e centralizando a visualização em dashboards em tempo real no **Grafana**.
 
 ### Métricas Exportadas pelo Worker
 
