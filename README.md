@@ -286,6 +286,13 @@ ORDER BY Id DESC;
 
 <img width="1067" height="338" alt="image" src="https://github.com/user-attachments/assets/710a3bbb-390e-475f-8158-44003375d4bf" />
 
+### Testes de Resiliência e Dead Letter Queue (DLQ)
+
+Simulação de falha temporária e esgotamento da política de retry via Polly, culminando no descarte e posterior recuperação da mensagem presa na DLQ.
+
+#### Reprocessamento da Dead Letter Queue
+<img width="1067" height="338" alt="Reprocessando mensagens na DLQ" src="https://github.com/user-attachments/assets/710a3bbb-390e-475f-8158-44003375d4bf" />
+
 ## Observabilidade e Monitorização
 
 <img width="1600" height="860" alt="image" src="https://github.com/user-attachments/assets/ac923a75-fcd1-46d1-a67c-f9e943bf9233" />
@@ -302,13 +309,6 @@ ORDER BY Id DESC;
 | `reconciliacao_mensagens_dlq_total` | Counter | Total de mensagens irrecuperáveis descartadas para a Dead Letter Queue (DLQ). |
 
 ---
-
-### Testes de Resiliência e Dead Letter Queue (DLQ)
-
-Simulação de falha temporária e esgotamento da política de retry via Polly, culminando no descarte e posterior recuperação da mensagem presa na DLQ.
-
-#### Reprocessamento da Dead Letter Queue
-<img width="1067" height="338" alt="Reprocessando mensagens na DLQ" src="https://github.com/user-attachments/assets/710a3bbb-390e-475f-8158-44003375d4bf" />
 
 ---
 
